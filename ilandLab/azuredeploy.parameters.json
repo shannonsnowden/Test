@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "virtualMachines_ZCA_name": {
+      "value": "zca"
+    },
+    "routeTables_LabVnet_name": {
+      "value": "LabVnetRT"
+    },
+    "virtualNetworks_LabVnet_name": {
+      "value": "LabVnet"
+    },
+    "networkInterfaces_zca741_name": {
+      "value": "zcanic"
+    },
+    "virtualMachines_pfsense243_name": {
+      "value": "pfsense"
+    },
+    "networkInterfaces_pfsenseLAN_name": {
+      "value": "pfniclan"
+    },
+    "publicIPAddresses_pfsense243_name": {
+      "value": "publicip"
+    },
+    "networkSecurityGroups_pfsenseNSG_name": {
+      "value": "nsgpfsense"
+    },
+    "networkSecurityGroups_IPAnyAnyNSG_name": {
+      "value": "nsganyany"
+    },
+    "networkInterfaces_pfsense243_PrimaryNIC_name": {
+      "value": "pfnicwan"
+    },
+    "location": {
+      "value": "southcentralus"
+    }
+  }
+}

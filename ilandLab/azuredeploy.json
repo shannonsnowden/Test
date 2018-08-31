@@ -1,0 +1,759 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "virtualMachines_ZCA_name": {
+      "defaultValue": "ZCA",
+      "type": "string"
+    },
+    "routeTables_LabVnet_name": {
+      "defaultValue": "LabVnet",
+      "type": "string"
+    },
+    "virtualNetworks_LabVnet_name": {
+      "defaultValue": "LabVnet",
+      "type": "string"
+    },
+    "networkInterfaces_zca741_name": {
+      "defaultValue": "zca741",
+      "type": "string"
+    },
+    "virtualMachines_pfsense243_name": {
+      "defaultValue": "pfsense243",
+      "type": "string"
+    },
+    "networkInterfaces_pfsenseLAN_name": {
+      "defaultValue": "pfsenseLAN",
+      "type": "string"
+    },
+    "publicIPAddresses_pfsense243_name": {
+      "defaultValue": "pfsense243",
+      "type": "string"
+    },
+    "networkSecurityGroups_pfsenseNSG_name": {
+      "defaultValue": "pfsenseNSG",
+      "type": "string"
+    },
+    "networkSecurityGroups_IPAnyAnyNSG_name": {
+      "defaultValue": "IPAnyAnyNSG",
+      "type": "string"
+    },
+    "networkInterfaces_pfsense243_PrimaryNIC_name": {
+      "defaultValue": "pfsense243_PrimaryNIC",
+      "type": "string"
+    },
+    "adminUsername": {
+      "defaultValue": "zertoadmin",
+      "type": "string"
+    },
+    "adminPassword": {
+      "defaultValue": "Zertodata123#",
+      "type": "string"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    }
+  },
+  "variables": {
+    "storageAccountName": "[concat('diag', uniquestring(resourceGroup().id))]",
+    "diskName_pfsense243": "[concat(parameters('virtualMachines_pfsense243_name'), '-disk')]",
+    "diskName_ZCA": "[concat(parameters('virtualMachines_ZCA_name'), '-disk')]"
+  },
+  "resources": [
+    {
+      "comments": "Storage Account for Boot Diag",
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[concat('diag', uniquestring(resourceGroup().id))]",
+      "apiVersion": "2016-01-01",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Compute/disks",
+      "apiVersion": "2018-04-01",
+      "name": "[variables('diskName_pfsense243')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "creationData": {
+          "createOption": "Import",
+          "sourceUri": "https://southcentralusvhds.blob.core.windows.net/vhd/pfsense4labs.vhd"
+        },
+        "osType": "Linux"
+      }
+    },
+    {
+      "type": "Microsoft.Compute/disks",
+      "apiVersion": "2018-04-01",
+      "name": "[variables('diskName_ZCA')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "creationData": {
+          "createOption": "Import",
+          "sourceUri": "https://southcentralusvhds.blob.core.windows.net/vhd/zcabase.vhd"
+        },
+        "osType": "Windows"
+      }
+    },
+    {
+      "comments": "pfsense vpn gateway VM",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[parameters('virtualMachines_pfsense243_name')]",
+      "apiVersion": "2017-12-01",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Zerto": "pid-84d2edc4-86bd-439c-8373-e9f04e0f5ad2"
+      },
+      "scale": null,
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_F2"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "osType": "Linux",
+            "createOption": "Attach",
+            "managedDisk": {
+              "id": "[resourceId('Microsoft.Compute/disks', variables('diskName_pfsense243'))]"
+            }
+          },
+          "dataDisks": []
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_pfsense243_PrimaryNIC_name'))]",
+              "properties": {
+                "primary": true
+              }
+            },
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_pfsenseLAN_name'))]",
+              "properties": {
+                "primary": false
+              }
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))).primaryEndpoints.blob]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_pfsense243_PrimaryNIC_name'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_pfsenseLAN_name'))]"
+      ]
+    },
+    {
+      "apiVersion": "2017-12-01",
+      "comments": "Lab ZCA Virtual Machine",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_zca741_name'))]"
+      ],
+      "location": "[parameters('location')]",
+      "name": "[parameters('virtualMachines_ZCA_name')]",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_DS2_v2"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "osType": "Windows",
+            "createOption": "Attach",
+            "managedDisk": {
+              "id": "[resourceId('Microsoft.Compute/disks', variables('diskName_ZCA'))]"
+            }
+          },
+          "dataDisks": []
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_zca741_name'))]"
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))).primaryEndpoints.blob]"
+          }
+        },
+        "licenseType": "Windows_Server"
+      },
+      "scale": null,
+      "type": "Microsoft.Compute/virtualMachines"
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/networkInterfaces/pfsense243_PrimaryNIC'.",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[parameters('networkInterfaces_pfsense243_PrimaryNIC_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Zerto": "pid-84d2edc4-86bd-439c-8373-e9f04e0f5ad2"
+      },
+      "scale": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "8676fb71-2f85-4a6b-aafa-8f5d948b87a2",
+        "ipConfigurations": [
+          {
+            "name": "[concat(parameters('networkInterfaces_pfsense243_PrimaryNIC_name'),'_conf')]",
+            "etag": "W/\"022b8370-ef23-4956-a7db-9db2f29ab9bd\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "privateIPAddress": "10.0.1.4",
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_pfsense243_name'))]"
+              },
+              "subnet": {
+                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name')), '/subnets/LabWANSubnet')]"
+              },
+              "primary": true,
+              "privateIPAddressVersion": "IPv4"
+            }
+          }
+        ],
+        "dnsSettings": {
+          "dnsServers": [],
+          "appliedDnsServers": [],
+          "internalDomainNameSuffix": "jkkk3o0caxredau00hzpmqawbc.yx.internal.cloudapp.net"
+        },
+        "macAddress": "00-0D-3A-F8-08-2C",
+        "enableAcceleratedNetworking": false,
+        "enableIPForwarding": true,
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_pfsenseNSG_name'))]"
+        },
+        "primary": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_pfsense243_name'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_pfsenseNSG_name'))]"
+      ]
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/networkInterfaces/pfsenseLAN'.",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[parameters('networkInterfaces_pfsenseLAN_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "5d787aeb-aad7-48df-b722-fab861cd8db4",
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "etag": "W/\"c30f4a63-921a-4a6a-861e-e60d7dabc370\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "privateIPAddress": "10.0.2.200",
+              "privateIPAllocationMethod": "Static",
+              "subnet": {
+                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name')), '/subnets/LabLANSubnet')]"
+              },
+              "primary": true,
+              "privateIPAddressVersion": "IPv4"
+            }
+          }
+        ],
+        "dnsSettings": {
+          "dnsServers": [],
+          "appliedDnsServers": [],
+          "internalDomainNameSuffix": "jkkk3o0caxredau00hzpmqawbc.yx.internal.cloudapp.net"
+        },
+        "macAddress": "00-0D-3A-F8-89-BD",
+        "enableAcceleratedNetworking": false,
+        "enableIPForwarding": true,
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_pfsenseNSG_name'))]"
+        },
+        "primary": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_pfsenseNSG_name'))]"
+      ]
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/networkInterfaces/zca741'.",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[parameters('networkInterfaces_zca741_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "1da3410f-73ca-4dde-a5c3-955aba2bb422",
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "etag": "W/\"d415bcf9-d813-40f3-8e7f-0a1c745657df\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "privateIPAddress": "10.0.2.4",
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name')), '/subnets/LabLANSubnet')]"
+              },
+              "primary": true,
+              "privateIPAddressVersion": "IPv4"
+            }
+          }
+        ],
+        "dnsSettings": {
+          "dnsServers": [],
+          "appliedDnsServers": []
+        },
+        "enableAcceleratedNetworking": false,
+        "enableIPForwarding": false,
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_IPAnyAnyNSG_name'))]"
+        },
+        "primary": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_LabVnet_name'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_IPAnyAnyNSG_name'))]"
+      ]
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/networkSecurityGroups/IPAnyAnyNSG'.",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "[parameters('networkSecurityGroups_IPAnyAnyNSG_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "43b0e3c5-9406-4906-b584-36d42c5a32d1",
+        "securityRules": [
+          {
+            "name": "IN_Any",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          }
+        ],
+        "defaultSecurityRules": [
+          {
+            "name": "AllowVnetInBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow inbound traffic from all VMs in VNET",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "access": "Allow",
+              "priority": 65000,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowAzureLoadBalancerInBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow inbound traffic from azure load balancer",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 65001,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "DenyAllInBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Deny all inbound traffic",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Deny",
+              "priority": 65500,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowVnetOutBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow outbound traffic from all VMs to all VMs in VNET",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "access": "Allow",
+              "priority": 65000,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowInternetOutBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow outbound traffic from all VMs to Internet",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "Internet",
+              "access": "Allow",
+              "priority": 65001,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "DenyAllOutBound",
+            "etag": "W/\"b085cf18-4c4f-4570-98b6-2565f8a824b6\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Deny all outbound traffic",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Deny",
+              "priority": 65500,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          }
+        ]
+      },
+      "dependsOn": []
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/networkSecurityGroups/pfsenseNSG'.",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "[parameters('networkSecurityGroups_pfsenseNSG_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "a6f56ca4-d876-40fc-8403-a173004d7d5f",
+        "securityRules": [
+          {
+            "name": "Port_Any",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "Out_Port_8080",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          }
+        ],
+        "defaultSecurityRules": [
+          {
+            "name": "AllowVnetInBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow inbound traffic from all VMs in VNET",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "access": "Allow",
+              "priority": 65000,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowAzureLoadBalancerInBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow inbound traffic from azure load balancer",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 65001,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "DenyAllInBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Deny all inbound traffic",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Deny",
+              "priority": 65500,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowVnetOutBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow outbound traffic from all VMs to all VMs in VNET",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "access": "Allow",
+              "priority": 65000,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "AllowInternetOutBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Allow outbound traffic from all VMs to Internet",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "Internet",
+              "access": "Allow",
+              "priority": 65001,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          },
+          {
+            "name": "DenyAllOutBound",
+            "etag": "W/\"5804a19d-3bb9-4f7c-ad44-7b2a2cf3e25c\"",
+            "properties": {
+              "provisioningState": "Succeeded",
+              "description": "Deny all outbound traffic",
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "*",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Deny",
+              "priority": 65500,
+              "direction": "Outbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+            }
+          }
+        ]
+      },
+      "dependsOn": []
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/publicIPAddresses/pfsense243'.",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "sku": {
+        "name": "Basic",
+        "tier": "Regional"
+      },
+      "name": "[parameters('publicIPAddresses_pfsense243_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "publicIPAddressVersion": "IPv4",
+        "publicIPAllocationMethod": "Dynamic",
+        "ipTags": []
+      },
+      "dependsOn": []
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/routeTables/LabVnet'.",
+      "type": "Microsoft.Network/routeTables",
+      "name": "[parameters('routeTables_LabVnet_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "scale": null,
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": [
+          {
+            "name": "defaultPFsense",
+            "etag": "W/\"5c469e5b-b724-4cf6-b09c-2de08735eddb\"",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "VirtualAppliance",
+              "nextHopIpAddress": "10.0.2.200"
+            }
+          }
+        ]
+      },
+      "dependsOn": []
+    },
+    {
+      "comments": "Generalized from resource: '/subscriptions/39265368-2d2a-41e7-b3a1-b5e2691a1477/resourceGroups/iland2azurelab/providers/Microsoft.Network/virtualNetworks/LabVnet'.",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[parameters('virtualNetworks_LabVnet_name')]",
+      "apiVersion": "2018-02-01",
+      "location": "[parameters('location')]",
+      "tags": {},
+      "scale": null,
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/16"
+          ]
+        },
+        "dhcpOptions": {
+          "dnsServers": []
+        },
+        "subnets": [
+          {
+            "name": "LabWANSubnet",
+            "etag": "W/\"f15ff439-a8e7-4f01-8db1-b8c93523d339\"",
+            "properties": {
+              "addressPrefix": "10.0.1.0/24"
+            }
+          },
+          {
+            "name": "LabFOTSubnet",
+            "etag": "W/\"f15ff439-a8e7-4f01-8db1-b8c93523d339\"",
+            "properties": {
+              "addressPrefix": "10.0.3.0/24"
+            }
+          },
+          {
+            "name": "LabLANSubnet",
+            "etag": "W/\"f15ff439-a8e7-4f01-8db1-b8c93523d339\"",
+            "properties": {
+              "addressPrefix": "10.0.2.0/24",
+              "routeTable": {
+                "id": "[resourceId('Microsoft.Network/routeTables', parameters('routeTables_LabVnet_name'))]"
+              },
+              "serviceEndpoints": []
+            }
+          }
+        ],
+        "virtualNetworkPeerings": [],
+        "enableDdosProtection": false,
+        "enableVmProtection": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/routeTables', parameters('routeTables_LabVnet_name'))]"
+      ]
+    }
+  ]
+}
